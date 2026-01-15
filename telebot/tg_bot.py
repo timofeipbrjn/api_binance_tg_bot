@@ -1,8 +1,8 @@
 import os
-import telebot
-from telebot import types
 import requests
 from dotenv import load_dotenv
+import telebot
+from telebot import types
 
 load_dotenv()
 
@@ -11,7 +11,7 @@ TOKEN = os.environ.get('BOT_TOKEN')
 if TOKEN is None:
     raise ValueError("Переменная окружения BOT_TOKEN не найдена.")
 
-url = 'https://api.binance.com/api/v3/ticker/price'
+URL = 'https://api.binance.com/api/v3/ticker/price'
 bot = telebot.TeleBot(TOKEN)
 
 
@@ -85,8 +85,8 @@ def contact_bot(message):
 def handle_crypto(message):
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard = True)
     item_buttons = []
-    for item in CRYPTO.keys():
-        item_buttons.append(types.KeyboardButton(item))
+    for key in CRYPTO:
+        item_buttons.append(types.KeyboardButton(key))
 
     btn_back = types.KeyboardButton('Вернуться в главное меню')
 
@@ -151,22 +151,15 @@ def show_help(message):
     bot.send_message(message.chat.id, help_text)
 
 
-@bot.message_handler(func=lambda message:message.text in CRYPTO.keys())
+@bot.message_handler(func=lambda message:message.text in CRYPTO)
 def handle_result(message):
     try:
-        response = requests.get(url, params={'symbol': CRYPTO[message.text]})
-        if response.status_code == 200:
-            bot.send_message(message.chat.id,
-                            f"1 {message.text} is {round(float(response.json()['price']), 2)} usdt"
-                            )
-        else:
-            bot.send_message(message.chat.id,
-                            'Ошибка при получении данных'
-                            )
-    except Exception as error:
+        response = requests.get(URL, params={'symbol': CRYPTO[message.text]}, timeout=5)
         bot.send_message(message.chat.id,
-                         f'Ошибка: {str(error)}'
-                         )
+                        f"1 {message.text} = {float(response.json()['price'])} usdt"
+                        )
+    except requests.exceptions.RequestException:
+        bot.send_message(message.chat.id, 'Ошибка при получении данных')
 
 #just chatting----------------------------------------------------------------------------------------
 
@@ -178,7 +171,6 @@ def handle_text(message):
 
     if message.text == '@iiiooyyyyyyy':
         return
-
 
     user_text = message.text.lower()
     if 'как дела' in user_text:
