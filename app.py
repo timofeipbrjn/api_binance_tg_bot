@@ -5,12 +5,19 @@ from dotenv import load_dotenv
 import telebot
 from telebot import types
 
+
 load_dotenv()
 
 TOKEN = os.environ.get('BOT_TOKEN')
+YOUR_CONTACT = os.environ.get('ACCOUNT')
 
 if TOKEN is None:
     raise ValueError("Переменная окружения BOT_TOKEN не найдена.")
+
+if YOUR_CONTACT is None:
+    raise ValueError("Контакт не указан.")
+
+contact: str = YOUR_CONTACT
 
 URL = 'https://api.binance.com/api/v3/ticker/price'
 bot = telebot.TeleBot(TOKEN)
@@ -28,17 +35,17 @@ user_sessions = {}
 
 #main handlers-----------------------------------------------------------
 
-@bot.message_handler(commands = ['start'])
+@bot.message_handler(commands=['start'])
 def send_welcome(message):
-    '''welcome message'''
+    '''Sends welcome message.'''
     bot.reply_to(message, '''
     Привет, введи "/menu" или зайди в меню через вкладку возле строки для отправки сообщения, чтобы начать работу с ботом🤖
     ''')
 
 
-@bot.message_handler(commands = ['restart'])
+@bot.message_handler(commands=['restart'])
 def restart_bot(message):
-    '''restart'''
+    '''Restarts bot.'''
     user_id = message.from_user.id
     user_sessions[user_id] = {
         'data': {},
@@ -49,9 +56,9 @@ def restart_bot(message):
     show_menu(message)
 
 
-@bot.message_handler(commands = ['menu'])
+@bot.message_handler(commands=['menu'])
 def show_menu(message):
-    '''show menu'''
+    '''Displays the main keyboard menu to the user.'''
     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard = True)
 
     btn1 = types.KeyboardButton('Криптовалюта')
@@ -69,23 +76,17 @@ def show_menu(message):
     )
 
 
-@bot.message_handler(commands = ['about'])
-def about_bot(message):
-    '''show info about bot'''
-    handle_about(message)
-
-
-@bot.message_handler(commands = ['contact'])
+@bot.message_handler(commands=['contact'])
 def contact_bot(message):
-    '''func for /contact'''
+    '''Handles the /contact command'''
     show_contact(message)
 
 #lambda------------------------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == 'Криптовалюта')
 def handle_crypto(message):
-    '''crypto menu'''
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard = True)
+    '''Displays keyboard crypto menu to the user.'''
+    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
     item_buttons = []
     for key in CRYPTO:
         item_buttons.append(types.KeyboardButton(key))
@@ -116,13 +117,14 @@ def handle_crypto(message):
 
 @bot.message_handler(func=lambda message: message.text == 'Обратная связь')
 def show_contact(message):
-    '''send my contact'''
-    bot.send_message(message.chat.id, '@iiiooyyyyyyy')
+    '''Sends my contact'''
+    bot.send_message(message.chat.id, contact)
 
 
+@bot.message_handler(commands=['about'])
 @bot.message_handler(func=lambda message: message.text == 'О боте')
 def handle_about(message):
-    '''show bot info'''
+    '''Sends info about bot.'''
     about_text = """
 Этот бот помогает отслеживать курсы криптовалют и валют в реальном времени.
 
@@ -140,7 +142,7 @@ def handle_about(message):
 
 @bot.message_handler(func=lambda message: message.text == 'Вернуться в главное меню')
 def back(message):
-    '''back to main menu'''
+    '''Back the user to main menu.'''
     user_id = message.from_user.id
     user_sessions[user_id] = {'state': 'main_menu'}
     show_menu(message)
@@ -148,8 +150,9 @@ def back(message):
 
 @bot.message_handler(func=lambda message: message.text == 'Помощь (доступные команды)')
 def show_help(message):
-    '''show commands'''
+    '''Sends all commands.'''
     help_text = '''
+Доступные команды на данный момент 🤠
 /restart - перезапуск бота
 /menu - главное меню
 /about - о боте
@@ -158,60 +161,23 @@ def show_help(message):
     bot.send_message(message.chat.id, help_text)
 
 
-@bot.message_handler(func=lambda message:message.text in CRYPTO)
-def handle_result(message):
-    '''show currency rate'''
+@bot.message_handler(func=lambda message: message.text in CRYPTO)
+def handle_price_request(message):
+    '''Fetches price for binance and sends it to the user.'''
+    symbol = CRYPTO[message.text]
     try:
-        response = requests.get(URL, params={'symbol': CRYPTO[message.text]}, timeout=5)
-        bot.send_message(message.chat.id,
-                        f"1 {message.text} = {float(response.json()['price'])} usdt"
-                        )
-    except requests.exceptions.RequestException:
-        bot.send_message(message.chat.id, 'Ошибка при получении данных')
+        response = requests.get(URL, params={'symbol': symbol}, timeout=5)
+        response.raise_for_status()
 
-#just chatting---------------------------------------------------------
+        raw_price = response.json().get('price')
+        price = float(raw_price)
 
-@bot.message_handler(content_types = ['text'])
-def handle_text(message):
-    '''base replies'''
-    if message.text.startswith('/'):
-        return
+        formatted_price = f"{price:.8f}".rstrip('0').rstrip('.')
+        bot.send_message(message.chat.id, f"💎 1 {message.text} = {formatted_price} usdt")
+    except (requests.exceptions.RequestException, ValueError, TypeError):
+        bot.send_message(message.chat.id, '⚠️ Ошибка при получении данных')
 
-    if message.text == '@iiiooyyyyyyy':
-        return
-
-    user_text = message.text.lower()
-    if 'как дела' in user_text:
-        bot.reply_to(message, 'Неплохо, а ты?')
-    elif 'привет' in user_text:
-        bot.reply_to(message, 'Привет🤖')
-    else:
-        bot.reply_to(message, 'Пока что не могу ответить😢')
-
-
-@bot.message_handler(content_types = ['photo'])
-def handle_photo(message):
-    '''reply to photo'''
-    bot.reply_to(message, 'Крутая фотка!')
-
-
-@bot.message_handler(content_types = ['document'])
-def handle_docs(message):
-    '''reply to doc'''
-    bot.reply_to(message, 'Файл получен')
-
-@bot.message_handler(content_types = ['audio'])
-def handle_audio(message):
-    '''reply to audio'''
-    bot.reply_to(message, 'Классный трек')
-
-
-@bot.message_handler(content_types = ['sticker'])
-def handle_sticker(message):
-    '''reply to emoji'''
-    bot.reply_to(message, '🤨')
 
 #---------------------------------------------------------------------
-
 if __name__ == '__main__':
     bot.infinity_polling()
