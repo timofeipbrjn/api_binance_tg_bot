@@ -1,0 +1,11 @@
+#BOT_TOKEN
+.env
+
+# venv
+venv/
+.venv/
+env/
+
+# Кэш
+__pycache__/
+*.py[cod]
