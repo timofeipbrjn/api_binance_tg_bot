@@ -10,6 +10,7 @@ load_dotenv()
 
 TOKEN = os.environ.get('BOT_TOKEN')
 YOUR_CONTACT = os.environ.get('ACCOUNT')
+btn_back = types.KeyboardButton('Вернуться в главное меню')
 
 if TOKEN is None:
     raise ValueError("Переменная окружения BOT_TOKEN не найдена.")
@@ -23,12 +24,14 @@ URL = 'https://api.binance.com/api/v3/ticker/price'
 bot = telebot.TeleBot(TOKEN)
 
 CRYPTO = {
-    'Bitcoin': 'BTCUSDT',
-    'Ethereum': 'ETHUSDT',
-    'Doge': 'DOGEUSDT',
-    'Euro': 'EURUSDT',
-    'Binance coin': 'BNBUSDT',
-    'Pound': 'GBPUSDT'
+    'Bitcoin': 'BTC',
+    'Ethereum': 'ETH',
+    'Binance coin': 'BNB',
+    'Doge': 'DOGE',
+    'Dollar': 'USDT',
+    'Euro': 'EUR',
+    'Pound': 'GBP',
+    'Frank': 'CHF'
 }
 
 user_sessions = {}
@@ -84,22 +87,104 @@ def contact_bot(message):
 #lambda------------------------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == 'Криптовалюта')
-def handle_crypto(message):
-    '''Displays keyboard crypto menu to the user.'''
-    markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-    item_buttons = []
-    for key in CRYPTO:
-        item_buttons.append(types.KeyboardButton(key))
+def handle_first_step(message):
+    '''Displays the first keyboard crypto menu to the user.'''
 
-    btn_back = types.KeyboardButton('Вернуться в главное меню')
+    markup = types.ReplyKeyboardMarkup(row_width=4, resize_keyboard=True)
+    item_buttons = []
+    for key in CRYPTO.keys():
+        item_buttons.append(key)
 
     markup.add(*item_buttons, btn_back)
 
     bot.send_message(
         message.chat.id,
-        'Раздел криптовалюты',
-        reply_markup = markup
+        'Выберите первую валюту',
+        reply_markup=markup
     )
+
+@bot.message_handler(func=lambda message: message.text in CRYPTO)
+def handle_second_step(message):
+    '''The second step of getting result'''
+    user_id = message.from_user.id
+    user_sessions[user_id] = {
+        'first_currency': CRYPTO[message.text]
+    }
+
+    markup = types.ReplyKeyboardMarkup(row_width=4, resize_keyboard=True)
+    item_buttons = []
+    for key in CRYPTO.keys():
+        item_buttons.append(key)
+
+    markup.add(*item_buttons, btn_back)
+
+    bot.send_message(
+        message.chat.id,
+        'Выберите вторую валюту',
+        reply_markup=markup
+    )
+
+@bot.message_handler(func=lambda message: message.text in CRYPTO)
+def handle_final_step(message):
+    '''Finally sending currency'''
+    user_id = message.from_user.id
+    coin1 = CRYPTO[user_sessions[user_id]['first_currancy']]
+    coin2 = CRYPTO[message.text]
+
+    try:
+        first_coin = requests.get(URL, params={'symbol': coin1}, timeout=5)
+        second_coin = requests.get(URL, params={'symbol': coin2}, timeout=5)
+        first_coin.raise_for_status()
+        second_coin.raise_for_status()
+
+        price1 = first_coin.json().get('price')
+        price2 = second_coin.json().get('price')
+
+        price = float(price1 / price2)
+
+        formatted_price = f"{price:.8f}".rstrip('0').rstrip('.')
+
+        bot.send_message(message.chat.id, f"💎 1 {coin1} = {formatted_price} {coin2}")
+    except (requests.exceptions.RequestException, ValueError, TypeError):
+        bot.send_message(message.chat.id, '⚠️ Ошибка при получении данных')
+
+
+# @bot.message_handler(func=lambda message: message.text in CRYPTO)
+# def handle_price_request(message):
+#     '''Fetches price for binance and sends it to the user.'''
+#     symbol = CRYPTO[message.text]
+#     try:
+#         response = requests.get(URL, params={'symbol': symbol}, timeout=5)
+#         response.raise_for_status()
+
+#         raw_price = response.json().get('price')
+#         price = float(raw_price)
+
+#         formatted_price = f"{price:.8f}".rstrip('0').rstrip('.')
+#         bot.send_message(message.chat.id, f"💎 1 {message.text} = {formatted_price} usdt")
+#     except (requests.exceptions.RequestException, ValueError, TypeError):
+#         bot.send_message(message.chat.id, '⚠️ Ошибка при получении данных')
+
+
+
+# @bot.message_handler(func=lambda message: message.text == 'Криптовалюта')
+# def handle_crypto(message):
+#     '''Displays keyboard crypto menu to the user.'''
+#     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+#     item_buttons = []
+#     for key in CRYPTO:
+#         item_buttons.append(types.KeyboardButton(key))
+
+#     btn_back = types.KeyboardButton('Вернуться в главное меню')
+
+#     markup.add(*item_buttons, btn_back)
+
+#     bot.send_message(
+#         message.chat.id,
+#         'Раздел криптовалюты',
+#         reply_markup = markup
+#     )
+
 
 
 # Work in progress
@@ -159,23 +244,6 @@ def show_help(message):
 /contact - обратная связь
     '''
     bot.send_message(message.chat.id, help_text)
-
-
-@bot.message_handler(func=lambda message: message.text in CRYPTO)
-def handle_price_request(message):
-    '''Fetches price for binance and sends it to the user.'''
-    symbol = CRYPTO[message.text]
-    try:
-        response = requests.get(URL, params={'symbol': symbol}, timeout=5)
-        response.raise_for_status()
-
-        raw_price = response.json().get('price')
-        price = float(raw_price)
-
-        formatted_price = f"{price:.8f}".rstrip('0').rstrip('.')
-        bot.send_message(message.chat.id, f"💎 1 {message.text} = {formatted_price} usdt")
-    except (requests.exceptions.RequestException, ValueError, TypeError):
-        bot.send_message(message.chat.id, '⚠️ Ошибка при получении данных')
 
 
 #---------------------------------------------------------------------
