@@ -31,7 +31,7 @@ CRYPTO = {
     'Dollar': 'USDT',
     'Euro': 'EUR',
     'Pound': 'GBP',
-    'Frank': 'CHF'
+    'Lira': 'TRY'
 }
 
 user_sessions = {}
@@ -74,7 +74,7 @@ def show_menu(message):
 
     bot.send_message(
         message.chat.id,
-        'Выберите опцию из меню',
+        'Главное меню',
         reply_markup = markup
     )
 
@@ -87,13 +87,12 @@ def contact_bot(message):
 #lambda------------------------------------------------------------------
 
 @bot.message_handler(func=lambda message: message.text == 'Криптовалюта')
-def handle_first_step(message):
-    '''Displays the first keyboard crypto menu to the user.'''
+def handle_crypto_menu(message):
+    '''Displays the keyboard crypto menu to the user.'''
 
     markup = types.ReplyKeyboardMarkup(row_width=4, resize_keyboard=True)
     item_buttons = []
-    for key in CRYPTO.keys():
-        item_buttons.append(key)
+    item_buttons = [types.KeyboardButton(key) for key in CRYPTO]
 
     markup.add(*item_buttons, btn_back)
 
@@ -104,86 +103,76 @@ def handle_first_step(message):
     )
 
 @bot.message_handler(func=lambda message: message.text in CRYPTO)
-def handle_second_step(message):
-    '''The second step of getting result'''
-    user_id = message.from_user.id
-    user_sessions[user_id] = {
-        'first_currency': CRYPTO[message.text]
-    }
+def handle_currency_convertion(message):
+    '''Refers to Binance api and returns currency convertion.'''
+    item_buttons = []
+    item_buttons = [types.KeyboardButton(key) for key in CRYPTO]
 
     markup = types.ReplyKeyboardMarkup(row_width=4, resize_keyboard=True)
-    item_buttons = []
-    for key in CRYPTO.keys():
-        item_buttons.append(key)
-
     markup.add(*item_buttons, btn_back)
 
-    bot.send_message(
-        message.chat.id,
-        'Выберите вторую валюту',
-        reply_markup=markup
-    )
-
-@bot.message_handler(func=lambda message: message.text in CRYPTO)
-def handle_final_step(message):
-    '''Finally sending currency'''
     user_id = message.from_user.id
-    coin1 = CRYPTO[user_sessions[user_id]['first_currancy']]
-    coin2 = CRYPTO[message.text]
+    session = user_sessions.get(user_id)
 
-    try:
-        first_coin = requests.get(URL, params={'symbol': coin1}, timeout=5)
-        second_coin = requests.get(URL, params={'symbol': coin2}, timeout=5)
-        first_coin.raise_for_status()
-        second_coin.raise_for_status()
+    if not session or not 'first_currency' in session:
+        user_sessions[user_id] = {'first_currency': CRYPTO[message.text]}
 
-        price1 = first_coin.json().get('price')
-        price2 = second_coin.json().get('price')
+        bot.send_message(
+        message.chat.id,
+        f"Вы выбрали {message.text}, теперь выберите целевую валюту",
+        reply_markup=markup
+        )
 
-        price = float(price1 / price2)
+    else:
+        coin1 = user_sessions[user_id]['first_currency']
+        coin2 = CRYPTO[message.text]
 
-        formatted_price = f"{price:.8f}".rstrip('0').rstrip('.')
+        if coin1 == coin2:
+            bot.send_message(
+                message.chat.id,
+                'Вы выбрали ту же валюту, попробуйте снова.',
+                reply_markup = markup
+            )
+            return
 
-        bot.send_message(message.chat.id, f"💎 1 {coin1} = {formatted_price} {coin2}")
-    except (requests.exceptions.RequestException, ValueError, TypeError):
-        bot.send_message(message.chat.id, '⚠️ Ошибка при получении данных')
+        symbol1, symbol2 = coin1 + 'USDT', coin2 + 'USDT'
 
+        try:
+            if coin1 == 'USDT':
+                response = requests.get(URL, params={'symbol': symbol2}, timeout = 5)
+                response.raise_for_status()
+                price = 1 / float(response.json().get('price'))
 
-# @bot.message_handler(func=lambda message: message.text in CRYPTO)
-# def handle_price_request(message):
-#     '''Fetches price for binance and sends it to the user.'''
-#     symbol = CRYPTO[message.text]
-#     try:
-#         response = requests.get(URL, params={'symbol': symbol}, timeout=5)
-#         response.raise_for_status()
+            elif coin2 == 'USDT':
+                response = requests.get(URL, params={'symbol': symbol1}, timeout = 5)
+                response.raise_for_status()
+                price = float(response.json().get('price'))
 
-#         raw_price = response.json().get('price')
-#         price = float(raw_price)
+            else:
+                response1 = requests.get(URL, params={'symbol': symbol1}, timeout = 5)
+                response2 = requests.get(URL, params={'symbol': symbol2}, timeout = 5)
 
-#         formatted_price = f"{price:.8f}".rstrip('0').rstrip('.')
-#         bot.send_message(message.chat.id, f"💎 1 {message.text} = {formatted_price} usdt")
-#     except (requests.exceptions.RequestException, ValueError, TypeError):
-#         bot.send_message(message.chat.id, '⚠️ Ошибка при получении данных')
+                response1.raise_for_status()
+                response2.raise_for_status()
 
+                price1 = float(response1.json().get('price'))
+                price2 = float(response2.json().get('price'))
 
+                price = price1 / price2
 
-# @bot.message_handler(func=lambda message: message.text == 'Криптовалюта')
-# def handle_crypto(message):
-#     '''Displays keyboard crypto menu to the user.'''
-#     markup = types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
-#     item_buttons = []
-#     for key in CRYPTO:
-#         item_buttons.append(types.KeyboardButton(key))
+            formatted_price = f"{price:.8f}".rstrip('0').rstrip('.')
 
-#     btn_back = types.KeyboardButton('Вернуться в главное меню')
+            bot.send_message(message.chat.id, f"💎 1 {coin1} = {formatted_price} {coin2}")
 
-#     markup.add(*item_buttons, btn_back)
+            show_menu(message)
 
-#     bot.send_message(
-#         message.chat.id,
-#         'Раздел криптовалюты',
-#         reply_markup = markup
-#     )
+        except (requests.exceptions.RequestException, ValueError, TypeError):
+            bot.send_message(
+                message.chat.id,
+                    '⚠️ Ошибка при получении данных.'
+                )
+
+        del user_sessions[user_id]
 
 
 
@@ -229,7 +218,8 @@ def handle_about(message):
 def back(message):
     '''Back the user to main menu.'''
     user_id = message.from_user.id
-    user_sessions[user_id] = {'state': 'main_menu'}
+    if user_id in user_sessions:
+        del(user_sessions[user_id])
     show_menu(message)
 
 
